@@ -76,7 +76,7 @@ def take_screenshot( ip, port_arg, query_arg="" ):
 
     #Goto page
     ret_host = navigate_to_url(driver, url, host)
-    print (ret_host)
+    
     try: 
         if driver.page_source == empty_page or 'use the HTTPS scheme' in driver.page_source or 'was sent to HTTPS port' in driver.page_source:
             url = "https://" + path
