@@ -21,6 +21,7 @@ sudo pip3 install selenium
 - chromium & chromedriver
 
 sudo apt install chromium
+
 sudo apt install chromium-driver
 
 -Screenshot scripts
