@@ -30,11 +30,11 @@ Save  "http-screenshot.nse", "screenshot.py" to a separate folder.
 
 *Example how to execute scan*
 
-nmap -Pn -n  --script=[folder location where scripts got saved] -sV -v [subnet to be scanned]
+nmap -n  --script=[folder location where scripts got saved] -sV -v [subnet to be scanned]
 
 If folder where scripts are located is /home/someuser/scripts and scanned network is 192.168.1.0/24, correct syntax to run nmap is:
 
-nmap -Pn -n  --script=/home/someuser/scripts/ -sV -v 192.168.1.0/24
+nmap -n  --script=/home/someuser/scripts/ -sV -v 192.168.1.0/24
 
 The script drops all screenshots in the current directory.
 
