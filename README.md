@@ -34,7 +34,9 @@ nmap -n  --script=[folder location where scripts got saved] -sV -v --stats-every
 
 If folder where scripts are located is /home/someuser/scripts and scanned network is 192.168.1.0/24, correct syntax to run nmap is:
 
-nmap -n  --script=/home/someuser/scripts/ -sV -v --stats-every 30s 192.168.1.0/24
+nmap --script=/home/someuser/scripts/ -sV -n -v --defeat-rst-ratelimit --stats-every 30s 192.168.1.0/24
+
+The --defeat-rst-ratelimit option works around rate-limiting of the target's responses on closed ports by allowing inaccuracies in differentiating between closed and filtered ports. It does not affect packet rates or open port detection.
 
 The script drops all screenshots in the current directory.
 
