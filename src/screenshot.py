@@ -27,12 +27,8 @@ def navigate_to_url( driver, url, host ):
 
 def take_screenshot( ip, port_arg, query_arg="" ):
 
-    try:
-        host = ip
-    except:
-        host = ip
-        pass
-
+    host = ip
+    
     empty_page = '<html><head></head><body></body></html>'
     caps = DesiredCapabilities.CHROME
     caps['loggingPrefs'] = {'performance': 'ALL'}      # Works prior to chrome 75
