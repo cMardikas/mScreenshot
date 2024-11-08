@@ -30,12 +30,14 @@ Save  "http-screenshot.nse", "screenshot.py" to a separate folder.
 
 *Example how to execute scan*
 
-nmap --script=[folder location where scripts got saved] -sV -n -v --defeat-rst-ratelimit --host-timeout 120s --stats-every 30s [subnet to be scanned]
+nmap -p- --script=[folder location where scripts got saved] -sV -n -v --defeat-rst-ratelimit --host-timeout 120s --stats-every 30s [subnet to be scanned]
 
 If folder where scripts are located is /home/someuser/scripts and scanned network is 192.168.1.0/24, correct syntax to run nmap is:
 
-nmap --script=/home/someuser/scripts/ -sV -n -v --defeat-rst-ratelimit --host-timeout 120s --stats-every 30s 192.168.1.0/24
+nmap -p- --script=/home/someuser/scripts/ -sV -n -v --defeat-rst-ratelimit --host-timeout 120s --stats-every 30s 192.168.1.0/24
 
+-n no DNS name resolving.
+-p- goes through all TCP ports.
 --defeat-rst-ratelimit option works around rate-limiting of the target's responses on closed ports by allowing inaccuracies in differentiating between closed and filtered ports. It does not affect packet rates or open port detection.
 
 --host-timeout 120s (Give up on slow target hosts).
