@@ -26,22 +26,27 @@ sudo apt install chromium-driver
 
 -Screenshot scripts
 
-Save  "http-screenshot.nse", "screenshot.py" to a separate folder.
+Save  "http-screenshot.nse", "screenshot.py", and "nmap-bootstrap.xsl" to a separate folder.
 
 *Example how to execute scan*
 
-nmap -p- --script=[folder location where scripts got saved] -sV -n -v --defeat-rst-ratelimit --host-timeout 120s --stats-every 30s [subnet to be scanned]
+nmap --script=[folder location where scripts got saved] -sV -n -v --defeat-rst-ratelimit --host-timeout 600s --stats-every 10s [subnet to be scanned]
 
 If folder where scripts are located is /home/someuser/scripts and scanned network is 192.168.1.0/24, correct syntax to run nmap is:
 
-nmap -p- --script=/home/someuser/scripts/ -sV -n -v --defeat-rst-ratelimit --host-timeout 120s --stats-every 30s 192.168.1.0/24
+nmap --script=/home/someuser/scripts/ -sV -n -v --defeat-rst-ratelimit --host-timeout 600s --stats-every 10s -oA report 192.168.1.0/24
+
 
 -n no DNS name resolving.
--p- goes through all TCP ports.
 --defeat-rst-ratelimit option works around rate-limiting of the target's responses on closed ports by allowing inaccuracies in differentiating between closed and filtered ports. It does not affect packet rates or open port detection.
 
---host-timeout 120s (Give up on slow target hosts).
+--host-timeout 600s (Give up on slow target hosts).
 
 The script drops all screenshots in the current directory.
+
+To create nice looking HTML report, embedding produced screenshots:
+
+xsltproc -o report.html nmap-bootstrap.xsl report.xml
+
 
 Have fun.
