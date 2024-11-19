@@ -34,7 +34,7 @@ nmap --script=[folder location where scripts got saved] -sV -n -v --defeat-rst-r
 
 If folder where scripts are located is /home/someuser/scripts and scanned network is 192.168.1.0/24, correct syntax to run nmap is:
 
-nmap --script=/home/someuser/scripts/ -sV -n -v --defeat-rst-ratelimit --host-timeout 600s --stats-every 10s -oA report 192.168.1.0/24
+**nmap --script=/home/someuser/scripts/ -sV -n -v --defeat-rst-ratelimit --host-timeout 600s --stats-every 10s -oA report 192.168.1.0/24**
 
 
 -n no DNS name resolving.
@@ -46,7 +46,7 @@ The script drops all screenshots in the current directory.
 
 To create nice looking HTML report, embedding produced screenshots:
 
-xsltproc -o report.html nmap-bootstrap.xsl report.xml
+**xsltproc -o report.html nmap-bootstrap.xsl report.xml**
 
 
 Have fun.
