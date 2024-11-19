@@ -15,7 +15,6 @@ from selenium.common.exceptions import TimeoutException
 def navigate_to_url( driver, url, host ):
 
     ret_host = None
-    print (url)
     try:
         driver.get(url)
         time.sleep(5)
@@ -27,8 +26,12 @@ def navigate_to_url( driver, url, host ):
 
 def take_screenshot( ip, port_arg, query_arg="" ):
 
-    host = ip
-    
+    try:
+        host = ip
+    except:
+        host = ip
+        pass
+
     empty_page = '<html><head></head><body></body></html>'
     caps = DesiredCapabilities.CHROME
     caps['loggingPrefs'] = {'performance': 'ALL'}      # Works prior to chrome 75
