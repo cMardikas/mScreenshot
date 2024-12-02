@@ -29,6 +29,17 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
         <script src="https://cdn.datatables.net/plug-ins/2.1.0/sorting/ip-address.js" integrity="sha384-pbrITLqgA4lSZJgcYMK/c5hfUpOg+2vjjMQPdRv4hPEoBFYVWEuF1H3faZskzO9a" crossorigin="anonymous"></script>
         <style>
 
+.resize-container { 
+	width: 300px; /* Set the desired width of the container */ 
+	height: 200px; /* Set the desired height of the container */ 
+        overflow: hidden; /* Ensures that the image stays within the bounds */ 
+}
+.resize-container img { 
+width: 100%; 
+height: 100%; 
+object-fit: contain; /* Ensures the image fits within the container without clipping */ 
+}
+
           .target:before {
             content: "";
             display: block;
@@ -70,6 +81,7 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
               document.getElementById('table-services').innerHTML = transformContent(content, keywords)
               $('#table-services').DataTable( {
               "lengthMenu": [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
+	      "pageLength": -1,
               "order": [[ 0, 'desc' ]],
               "columnDefs": [
                 { "targets": [0], "orderable": true },
@@ -136,10 +148,6 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
                 <li><a href="#openservices">Open Services</a></li>
                 <li><a href="#webservices">Web Services</a></li>
                 <li><a href="#onlinehosts">Online Hosts</a></li>
-                <li><a href="#" style="pointer-events: none; cursor: default;">|</a></li>
-                <li><a href="https://www.pentestfactory.de/schwachstellendatenbank/" target="_blank" title="Vulnerability Database by Pentest Factory"><span class="glyphicon glyphicon-new-window " style="color: #f7a90a;"></span> CVEs</a></li>
-                <li><a href="https://www.ssllabs.com/ssltest/" target="_blank" title="SSL Server Test by Qualys"><span class="glyphicon glyphicon-new-window" style="color: #de1d0b;"></span> SSL/TLS</a></li>
-                <li><a href="https://securityheaders.com/" target="_blank" title="HTTP Header Test by Scott Helme"><span class="glyphicon glyphicon-new-window" style="color: #3a71d8;"></span> Headers</a></li>
               </ul>
             </div>
           </div>
@@ -175,12 +183,9 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
                     <button title="Keyword highlighing in 'Open Services'" id="highlight-button" onclick="highlight()">Highlight Keywords</button>
                     <button title="Reset keyword highlighing" id="reset-highlight-button" onclick="document.location.reload(true);">Reset</button>
                 </div>
-                <div style="margin-top: 25px" id="credits">
-                  <div><span class="glyphicon glyphicon-heart" style="color: #de1d0b;padding-right: 5px"></span><a href="https://github.com/Haxxnet/nmap-bootstrap-xsl">Nmap Bootstrap XSL</a> by <a href="https://github.com/l4rm4nd">LRVT</a></div>
-                </div>
             </div>
           </div>
-          <h2 id="scannedhosts" class="target">Scanned Hosts<xsl:if test="/nmaprun/runstats/hosts/@down > 1024"><small> (offline hosts are hidden)</small></xsl:if></h2>
+          <h2 id="scannedhosts" class="target">Scanned Hosts<xsl:if test="/nmaprun/runstats/hosts/@down > 0"><small> (offline hosts are hidden)</small></xsl:if></h2>
           <div class="table-responsive">
             <table id="table-overview" class="table table-striped dataTable" role="grid">
               <thead>
@@ -194,7 +199,7 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
               </thead>
               <tbody>
                 <xsl:choose>
-                  <xsl:when test="/nmaprun/runstats/hosts/@down > 1024">
+                  <xsl:when test="/nmaprun/runstats/hosts/@down > 0">
                     <xsl:for-each select="/nmaprun/host[status/@state='up']">
                       <tr>
                         <td><span class="label label-danger"><xsl:if test="status/@state='up'"><xsl:attribute name="class">label label-success</xsl:attribute></xsl:if><xsl:value-of select="status/@state"/></span></td>
@@ -281,7 +286,8 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
                   <th>Address</th>
                   <th>Port</th>
                   <th>Service</th>
-                  <th>Produkt</th>
+                  <th>Screenshot</th>
+                  <th>Product</th>
                   <th>Version</th>
                   <th>Title</th>
                   <th>SSL Certificate</th>
@@ -293,7 +299,7 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
                   <xsl:for-each select="ports/port[starts-with(service/@name, 'http') and state/@state='open' and @protocol='tcp']">
 
                     <tr>
-                      <!--<td><input name="select_all" value="1" type="checkbox"></input></td>-->
+                      <!--<td><input name="select_all" value="5" type="checkbox"></input></td>-->
                       <td>
                       <xsl:if test="count(../../hostnames/hostname) = 0">N/A</xsl:if>
                       <xsl:if test="count(../../hostnames/hostname) > 0"><xsl:value-of select="../../hostnames/hostname/@name"/></xsl:if></td>
@@ -305,6 +311,15 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
                       <xsl:attribute name="href">#port-<xsl:value-of select="translate(../../address/@addr, '.', '-')"/>-<xsl:value-of select="@portid"/></xsl:attribute><xsl:value-of select="@portid"/></a></td>
                       <!--Service-->
                       <td><xsl:if test="count(service/@tunnel) > 0"><xsl:value-of select="service/@tunnel"/>/</xsl:if><xsl:value-of select="service/@name"/></td>
+<td>
+<xsl:for-each select="script">
+        <xsl:if test="@id='http-screenshot'">
+                <div class="resize-container">
+                        <a><xsl:attribute name="href">#port-<xsl:value-of select="translate(../../../address/@addr, '.', '-')"/>-<xsl:value-of select="../@portid"/></xsl:attribute><xsl:value-of select="@portid"/><xsl:value-of select="@output" disable-output-escaping="yes"/></a>
+                </div>
+        </xsl:if>
+</xsl:for-each>
+</td>
                       <td><xsl:value-of select="service/@product"/></td>
                       <td><xsl:value-of select="service/@version"/></td>
                       <!--Title-->
@@ -332,7 +347,6 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
                               </td>
                         </xsl:otherwise>
                     </xsl:choose>
-
                     </tr>
                   </xsl:for-each>
                 </xsl:for-each>
@@ -465,14 +479,6 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
           </xsl:for-each>
         </div>
         <footer class="footer">
-          <div class="container">
-            <p class="text-muted">
-              This report was generated by or with the help of <a href="https://pentestfactory.com">Pentest Factory GmbH</a>.<br/>
-              If you have questions or problems do not hesitate <a href="mailto:team@pentestfactory.de">contacting us</a>.<br/><br/>
-              <span class="glyphicon glyphicon-heart" style="color: #de1d0b;"></span> Bootstrap Template by <a href="https://github.com/honze-net/nmap-bootstrap-xsl" target="_blank">Andreas Hontzia</a><br/>
-              <span class="glyphicon glyphicon-heart" style="color: #de1d0b;"></span> Tweaks and Extensions by <a href="https://github.com/l4rm4nd">LRVT</a>
-            </p>
-          </div>
         </footer>
 
         <script>
@@ -485,6 +491,7 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
           });
           $('#table-services').DataTable( {
             "lengthMenu": [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
+            "pageLength": -1, 
             "order": [[ 0, 'desc' ]],
             "columnDefs": [
               { "targets": [0], "orderable": true },
@@ -525,6 +532,7 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
           });
           $('#web-services').DataTable( {
             "lengthMenu": [ [10, 25, 50, 100, -1], [10, 25, 50, 100, "All"] ],
+            "pageLength": -1,
             "order": [[ 0, 'desc' ]],
             "columnDefs": [
               { "targets": [0], "orderable": true },
@@ -565,6 +573,7 @@ Andreas Hontzia (@honze_net) & LRVT (@l4rm4nd)
           });
           $('#table-overview').DataTable( {
             "lengthMenu": [ [5, 10, 25, 50, 100, -1], [5, 10, 25, 50, 100, "All"] ],
+            "pageLength": -1,
             "columnDefs": [
               { "targets": [1], "type": "ip-address" },
             ],
