@@ -1,52 +1,165 @@
 # mScreenshot
-A small script to automatically generate http,https screenshots from a nmap scan. 
 
-Original script was made by Ryan Wincey (https://www.securifera.com/blog/2019/06/11/http-screenshots-with-nmap-chrome-and-selenium/).
-Script is simplified and updated for Python3.
+Network scanner with automatic web service screenshots and HTML reporting. Wraps nmap with service detection, Selenium-based screenshotting, and a clean Bootstrap report.
 
-* Required packages Nmap, Python3, Selenium, Chromium & Chromium driver.
+## What it does
 
-*How to install on Debian 12* 
+1. Scans the target range for all open ports with service version detection
+2. Takes screenshots of every discovered HTTP/HTTPS service using headless Chromium
+3. Generates a single self-contained HTML report with sortable tables, inline screenshots, and export options (CSV, Excel, PDF)
 
-- Nmap
+## Quick start
 
-sudo apt install nmap
+```bash
+make
+sudo ./mScreenshot -d "Office network" 10.90.0.0/16
+```
 
-- python3 and selenium 
+Output:
 
-sudo apt install python3 
-sudo apt install python3-pip
-sudo pip3 install selenium
+```
+  mScreenshot v1.0.0
 
-- chromium & chromedriver
+  network   : 10.90.0.0/16
+  range     : 10.90.0.1 - 10.90.255.254
+  netmask   : 255.255.0.0
+  hosts     : 65534
+  label     : Office network
 
-sudo apt install chromium
+  checking dependencies...
+  all dependencies OK
 
-sudo apt install chromium-driver
+  scripts   : /home/kali/mScreenshot/scripts
+  output    : report_office-network_2026-03-26_2044.html
+```
 
--Screenshot scripts
+## Requirements
 
-Save  "http-screenshot.nse", "screenshot.py", and "nmap-bootstrap.xsl" to a separate folder.
+```bash
+sudo apt install nmap xsltproc chromium chromium-driver python3-selenium
+```
 
-*Example how to execute scan*
+| Dependency | Purpose |
+|---|---|
+| nmap | Port scanning and service detection |
+| xsltproc | XML to HTML report conversion |
+| chromium | Headless browser for screenshots |
+| chromium-driver | WebDriver for Selenium |
+| python3-selenium | Python browser automation |
 
-nmap --script=[folder location where scripts got saved] -sV -n -v --defeat-rst-ratelimit --host-timeout 600s --stats-every 10s [subnet to be scanned]
+## Usage
 
-If folder where scripts are located is /home/someuser/scripts and scanned network is 192.168.1.0/24, correct syntax to run nmap is:
+```
+Usage: mScreenshot [options] <target>
 
-**nmap --script=/home/someuser/scripts/ -sV -n -v --defeat-rst-ratelimit --host-timeout 600s --stats-every 10s -oA report 192.168.1.0/24**
+  <target>        IP, CIDR range, or dash range to scan
+                  examples: 10.90.0.0/16  192.168.1.0/24  10.0.0.1-50
 
+Options:
+  -d, --desc      Scan description (e.g., "Office network")
+  -c, --clean     Remove all reports and screenshots, then exit
+  -r, --report    Regenerate HTML from most recent XML (skip scan)
+  -h, --help      Show this help
+```
 
--n no DNS name resolving.
---defeat-rst-ratelimit option works around rate-limiting of the target's responses on closed ports by allowing inaccuracies in differentiating between closed and filtered ports. It does not affect packet rates or open port detection.
+## Examples
 
---host-timeout 600s (Give up on slow target hosts).
+```bash
+# Scan a /24 with description
+sudo ./mScreenshot -d "Office network" 192.168.1.0/24
 
-The script drops all screenshots in the current directory.
+# Scan a single host
+sudo ./mScreenshot 10.0.0.1
 
-To create nice looking HTML report, embedding produced screenshots:
+# Scan with dash range
+sudo ./mScreenshot -d "DMZ servers" 10.0.0.1-50
 
-**xsltproc -o report.html nmap-bootstrap.xsl report.xml**
+# Clean all previous results
+./mScreenshot --clean
 
+# Regenerate HTML report from existing XML
+./mScreenshot --report
+```
 
-Have fun.
+## Output
+
+A single HTML file named with description and timestamp:
+
+```
+report_office-network_2026-03-26_2044.html
+```
+
+Without `-d`, the target range is used:
+
+```
+report_192.168.1.0-24_2026-03-26_2044.html
+```
+
+## Report features
+
+- Scanned hosts overview with up/down status
+- Open services table with hostname, port, protocol, service, product, version, SSL certificate info
+- Web services table with inline screenshots
+- Per-host collapsible detail panels
+- Keyword highlighting (e.g., highlight `sha1`, `password`, `md5`)
+- Export to CSV, Excel, PDF
+- Sortable columns with IP address sorting
+- DataTables search and filtering
+
+## Project structure
+
+```
+mScreenshot/
+├── mScreenshot.c              # Main C wrapper
+├── Makefile
+├── nmap-bootstrap.xsl         # HTML report template
+└── scripts/
+    ├── http-screenshot.nse    # nmap NSE script — triggers screenshots
+    └── screenshot.py          # Selenium screenshotter
+```
+
+## How it works
+
+```
+mScreenshot
+    │
+    ├── validates target input (prevents injection)
+    ├── checks all dependencies
+    ├── displays CIDR range breakdown
+    │
+    ├── fork() → nmap
+    │       ├── -p-          all ports
+    │       ├── -sV          service version detection
+    │       ├── --script=    loads http-screenshot.nse
+    │       │       └── calls screenshot.py per HTTP port
+    │       │               └── headless Chromium → saves PNG
+    │       │               └── base64 encodes into XML output
+    │       └── -oX          XML output
+    │
+    ├── fork() → xsltproc
+    │       └── XML + XSL → HTML report
+    │
+    └── removes intermediate XML
+```
+
+## Nmap flags
+
+| Flag | Purpose |
+|---|---|
+| `-p-` | Scan all 65535 ports |
+| `-sV` | Service version detection (needed for screenshot triggers) |
+| `-n` | No DNS resolution |
+| `-v` | Verbose output |
+| `--defeat-rst-ratelimit` | Don't slow down on RST floods |
+| `--host-timeout 600s` | Skip hosts taking longer than 10 minutes |
+| `--stats-every 10s` | Print progress every 10 seconds |
+
+## Building
+
+```bash
+make
+```
+
+## License
+
+MIT
