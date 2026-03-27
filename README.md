@@ -12,26 +12,7 @@ Network scanner with automatic web service screenshots and HTML reporting. Wraps
 
 ```bash
 make
-sudo ./mScreenshot -d "Office network" 10.90.0.0/16
-```
-
-Output:
-
-```
-  mScreenshot v1.0.0
-
-  network   : 10.90.0.0/16
-  range     : 10.90.0.1 - 10.90.255.254
-  netmask   : 255.255.0.0
-  hosts     : 65534
-  label     : Office network
-
-  checking dependencies...
-  all dependencies OK
-
-  scripts   : /home/kali/mScreenshot/scripts
-  output    : report_office-network_2026-03-26_2044.html
-```
+sudo ./mScreenshot -d "Office network" 10.1.0.0/16
 
 ## Requirements
 
