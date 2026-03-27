@@ -13,6 +13,7 @@ Network scanner with automatic web service screenshots and HTML reporting. Wraps
 ```bash
 make
 sudo ./mScreenshot -d "Office network" 10.1.0.0/16
+```
 
 ## Requirements
 
