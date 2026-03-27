@@ -1,0 +1,9 @@
+# Compiled binary
+mScreenshot
+
+# Build artifacts
+*.o
+
+# Scan output
+report_*
+*.png
