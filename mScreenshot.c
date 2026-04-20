@@ -24,7 +24,7 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 
-#define MSCREENSHOT_VERSION "v.16"
+#define MSCREENSHOT_VERSION "v.17"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
 #define SCRIPT_DIR      "scripts"
@@ -523,7 +523,7 @@ static int run_scan(const char *target, const char *extra_exclude) {
         printf("  exclude     : %s\n", exclude);
     if (off_count > 0)
         printf("  offloads    : tso/gso/gro off on %s\n", off_ifaces);
-    printf("  strategy    : two-pass (discovery -> version+screenshots)\n");
+    printf("  strategy    : two-pass (discovery @ 10k pps -> version+screenshots)\n");
     printf("\n");
 
     // --------------------------------------------------------------------
@@ -542,13 +542,21 @@ static int run_scan(const char *target, const char *extra_exclude) {
         argv[i++] = "-p-";
         argv[i++] = "-n";
         argv[i++] = "-vv";
-        argv[i++] = "-T4";
+        // Pass 1 is pure discovery — we re-probe matched ports in pass 2,
+        // so we can afford to be aggressive here. -T5 loosens internal
+        // limits; --min-rate forces nmap to keep the packet rate high;
+        // --max-rtt-timeout stops us waiting 1.25s on every filtered port;
+        // --min-parallelism/--min-hostgroup fire more probes in parallel.
+        argv[i++] = "-T5";
         argv[i++] = "--open";
         argv[i++] = "--reason";
         argv[i++] = "--defeat-rst-ratelimit";
-        argv[i++] = "--min-rate";    argv[i++] = "1000";
-        argv[i++] = "--max-retries"; argv[i++] = "1";
-        argv[i++] = "--stats-every"; argv[i++] = "10s";
+        argv[i++] = "--min-rate";         argv[i++] = "10000";
+        argv[i++] = "--max-rtt-timeout";  argv[i++] = "500ms";
+        argv[i++] = "--min-parallelism";  argv[i++] = "256";
+        argv[i++] = "--min-hostgroup";    argv[i++] = "64";
+        argv[i++] = "--max-retries";      argv[i++] = "1";
+        argv[i++] = "--stats-every";      argv[i++] = "10s";
         if (exclude[0]) {
             argv[i++] = "--exclude";
             argv[i++] = exclude;

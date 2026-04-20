@@ -120,8 +120,10 @@ mScreenshot
     │
     ├── pass 1 / discovery          ─ fork() → nmap
     │       ├── -sS -p-              SYN sweep, all ports
-    │       ├── --min-rate 1000      no stalls on filtered ports
-    │       ├── --max-retries 1      keep it moving
+    │       ├── -T5 --min-rate 10000 aggressive throughput
+    │       ├── --max-rtt-timeout    500ms, not the default 1.25s
+    │       ├── --min-parallelism 256 keep probes in flight
+    │       ├── --min-hostgroup 64   scan many hosts in parallel
     │       └── -oG /tmp/...gnmap    small greppable output
     │               └── parsed for host:port pairs
     │
@@ -143,18 +145,23 @@ mScreenshot
 
 mScreenshot runs nmap **twice** — a fast SYN sweep to find open ports, then a targeted `-sV` + NSE pass against just those host:port pairs. This is dramatically faster than a single-pass `-p- -sV --version-intensity 9` on anything bigger than a handful of hosts.
 
-### Pass 1 — discovery
+### Pass 1 — discovery (aggressive)
+
+Pass 1 is a pure port-discovery sweep — any ports it finds get re-probed properly in pass 2, so we crank the throughput here.
 
 | Flag | Purpose |
 |---|---|
 | `-sS` | SYN stealth scan |
 | `-p-` | All 65535 ports |
 | `-n` / `-vv` | No DNS, extra verbose |
-| `-T4` | Aggressive timing |
+| `-T5` | Most aggressive built-in timing template |
 | `--open` | Show only open ports on screen |
 | `--reason` | State reason codes in output |
 | `--defeat-rst-ratelimit` | Don't slow down on RST floods |
-| `--min-rate 1000` | Don't let filtered ports stall the sweep |
+| `--min-rate 10000` | Target packet rate — keeps the wire full on big ranges |
+| `--max-rtt-timeout 500ms` | Don't wait the default 1.25s on every filtered port |
+| `--min-parallelism 256` | Keep at least 256 probes in flight |
+| `--min-hostgroup 64` | Fire probes against up to 64 hosts simultaneously |
 | `--max-retries 1` | Single retransmit budget — this pass is about being fast |
 | `--stats-every 10s` | Print progress every 10 seconds |
 | `--exclude <ips>` | Auto-excludes this host's own IPv4 addresses (loopback and link-local are skipped); any extras from `-e/--exclude` are appended |
