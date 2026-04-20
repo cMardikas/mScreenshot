@@ -130,13 +130,18 @@ mScreenshot
 | Flag | Purpose |
 |---|---|
 | `-p-` | Scan all 65535 ports |
+| `-Pn` | Skip host discovery — treat every address as up (avoids firewalled hosts being dropped) |
 | `-sV` | Service version detection (needed for screenshot triggers) |
 | `--version-intensity 9` | Try every version probe so HTTP on odd ports is caught |
 | `-n` | No DNS resolution |
-| `-v` | Verbose output |
+| `-vv` | Extra verbose output |
+| `-T4` | Aggressive timing — fast and safe on LAN/office networks |
+| `--open` | Show only open ports in on-screen progress (XML still contains all states) |
+| `--reason` | Include state reason codes (syn-ack, no-response) in XML |
 | `--defeat-rst-ratelimit` | Don't slow down on RST floods |
-| `--host-timeout 600s` | Skip hosts taking longer than 10 minutes |
+| `--max-retries 2` | Cap retransmit budget — keeps scans moving on flaky networks |
 | `--stats-every 10s` | Print progress every 10 seconds |
+| `-oA report_...` | Write all three output formats (.xml for HTML report, .nmap and .gnmap for inspection) |
 
 ## Building
 
