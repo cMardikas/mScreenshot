@@ -6,8 +6,7 @@
 # Behavior:
 #   - Tries to capture HTTP or HTTPS on any port (non-standard web UIs too).
 #   - Uses nmap's service hints (-s name, -t tunnel) if provided; otherwise
-#     probes HTTPS first on ports that commonly use TLS, HTTP first otherwise,
-#     and falls back to the other scheme if the response looks wrong.
+#     tries HTTP first and falls back to HTTPS if the response looks wrong.
 #   - Exits 0 on a successful screenshot, 1 on nothing-to-capture.
 
 import argparse
@@ -46,9 +45,6 @@ HTTPS_HINT_STRINGS = (
     "The plain HTTP request",
     "Client sent an HTTP request to an HTTPS server",
 )
-
-# Ports that are almost always TLS when they serve web.
-DEFAULT_TLS_PORTS = {"443", "4443", "8443", "9443", "10443"}
 
 
 def build_driver():
@@ -114,8 +110,6 @@ def pick_initial_scheme(port, service, tunnel):
     service = (service or "").lower()
 
     if tunnel == "ssl" or "https" in service or "ssl" in service:
-        return ("https", "http")
-    if port in DEFAULT_TLS_PORTS:
         return ("https", "http")
     return ("http", "https")
 
