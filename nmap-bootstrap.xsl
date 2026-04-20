@@ -774,7 +774,7 @@ i {
               </thead>
               <tbody>
                 <xsl:for-each select="/nmaprun/host">
-                  <xsl:for-each select="ports/port[starts-with(service/@name, 'http') and state/@state='open' and @protocol='tcp']">
+                  <xsl:for-each select="ports/port[state/@state='open' and @protocol='tcp' and (starts-with(service/@name, 'http') or script[@id='http-screenshot'])]">
 
                     <tr>
                       <!--<td><input name="select_all" value="5" type="checkbox"></input></td>-->
