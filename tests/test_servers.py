@@ -73,11 +73,21 @@ def http_response(body, status=b"200 OK"):
             b"Connection: close\r\n\r\n" + body)
 
 
-def consume_http_request(conn, max_bytes=8192):
+def consume_http_request(conn, max_bytes=8192, idle_timeout=0.4):
+    """Read until end-of-headers OR until the peer goes idle briefly.
+
+    nmap's -sV does a 'NULL probe' (connects but sends nothing, waiting
+    for the server to speak first). Our handler must NOT block on recv()
+    in that case — we want to fall through and send our HTTP response
+    immediately so nmap fingerprints it as a web server and moves on.
+    """
     data = b""
+    conn.settimeout(idle_timeout)
     while b"\r\n\r\n" not in data and len(data) < max_bytes:
         try:
             chunk = conn.recv(4096)
+        except socket.timeout:
+            break
         except Exception:
             break
         if not chunk:
@@ -94,7 +104,6 @@ def serve_plain_http(port, body):
 
     def handle(conn):
         try:
-            conn.settimeout(5)
             consume_http_request(conn)
             conn.sendall(http_response(body))
         finally:
@@ -122,8 +131,13 @@ def serve_tls_with_plain_fallback(port, certfile, keyfile, https_body, plain_bod
 
     def handle(conn):
         try:
-            conn.settimeout(5)
-            peek = conn.recv(1, socket.MSG_PEEK)
+            # Peek for a TLS ClientHello with a short timeout so nmap's
+            # NULL probe doesn't stall here forever.
+            conn.settimeout(0.4)
+            try:
+                peek = conn.recv(1, socket.MSG_PEEK)
+            except socket.timeout:
+                peek = b""
             if peek and peek[0] == 0x16:
                 # TLS ClientHello — wrap and serve the real HTTPS landing.
                 tls = sctx.wrap_socket(conn, server_side=True)
@@ -133,7 +147,7 @@ def serve_tls_with_plain_fallback(port, certfile, keyfile, https_body, plain_bod
                 except Exception: pass
                 tls.close()
             else:
-                # Plain HTTP — return Tomcat's "requires TLS" error.
+                # Plain HTTP (or NULL probe) — return Tomcat's "requires TLS".
                 consume_http_request(conn)
                 conn.sendall(http_response(plain_body, status=b"400 Bad Request"))
                 try: conn.shutdown(socket.SHUT_RDWR)
@@ -163,6 +177,9 @@ def serve_tls_only(port, certfile, keyfile, body):
 
     def handle(conn):
         try:
+            # If the peer doesn't initiate a TLS handshake, drop the
+            # connection fast so nmap's NULL probe times out cleanly.
+            conn.settimeout(2.0)
             tls = sctx.wrap_socket(conn, server_side=True)
             consume_http_request(tls)
             tls.sendall(http_response(body))
