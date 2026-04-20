@@ -23,8 +23,9 @@
 #define MSCREENSHOT_VERSION "1.0.0"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
-#define XSL_FILE    "nmap-bootstrap.xsl"
-#define SCRIPT_DIR  "scripts"
+#define XSL_FILE        "nmap-bootstrap.xsl"
+#define SCRIPT_DIR      "scripts"
+#define SCREENSHOT_DIR  "screenshots"
 
 // ─── Report name builder ─────────────────────────────────────────────────────
 
@@ -251,10 +252,13 @@ static void clean_reports(void) {
     }
     closedir(d);
 
-    // Clean PNGs from current dir and scripts dir
-    int screenshots = clean_pngs(".");
-    char scripts_dir[4096];
+    // Clean PNGs from the dedicated screenshots dir, plus any stragglers
+    // in the current dir and scripts dir from earlier versions.
+    char shots_dir[4096], scripts_dir[4096];
+    build_path(shots_dir,   sizeof(shots_dir),   SCREENSHOT_DIR);
     build_path(scripts_dir, sizeof(scripts_dir), SCRIPT_DIR);
+    int screenshots = clean_pngs(shots_dir);
+    screenshots += clean_pngs(".");
     screenshots += clean_pngs(scripts_dir);
 
     if (reports > 0)
@@ -268,11 +272,19 @@ static void clean_reports(void) {
 // ─── Run scan ────────────────────────────────────────────────────────────────
 
 static int run_scan(const char *target) {
-    char scripts_dir[4096];
+    char scripts_dir[4096], shots_dir[4096];
     build_path(scripts_dir, sizeof(scripts_dir), SCRIPT_DIR);
+    build_path(shots_dir,   sizeof(shots_dir),   SCREENSHOT_DIR);
 
-    printf("  scripts   : %s\n", scripts_dir);
-    printf("  output    : %s\n", s_report_html);
+    // Make sure the screenshots dir exists before nmap launches the NSE.
+    if (mkdir(shots_dir, 0755) != 0 && errno != EEXIST) {
+        fprintf(stderr, "  [!] cannot create %s: %s\n", shots_dir, strerror(errno));
+        return 1;
+    }
+
+    printf("  scripts     : %s\n", scripts_dir);
+    printf("  screenshots : %s\n", shots_dir);
+    printf("  output      : %s\n", s_report_html);
     printf("\n");
     printf("  ─── nmap output ────────────────────────────────────────\n\n");
 
@@ -284,10 +296,13 @@ static int run_scan(const char *target) {
 
     if (pid == 0) {
         char script_arg[4096];
-        snprintf(script_arg, sizeof(script_arg), "--script=%s/", scripts_dir);
+        char script_args[4200];
+        snprintf(script_arg,  sizeof(script_arg),  "--script=%s/", scripts_dir);
+        snprintf(script_args, sizeof(script_args), "screenshot_dir=%s", shots_dir);
 
         execlp("nmap", "nmap",
                script_arg,
+               "--script-args", script_args,
                "-p-",
                "-sV",
                "-n",

@@ -130,6 +130,7 @@ def capture(driver, ip, port, service, tunnel, output_dir):
 
     filename = f"{ip}_{port}.png" if port else f"{ip}.png"
     if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
         filename = os.path.join(output_dir, filename)
 
     try:

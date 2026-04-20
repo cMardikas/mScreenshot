@@ -32,6 +32,26 @@ local stdnse = require "stdnse"
 local script_path = string.sub(debug.getinfo(1).source, 2, (string.len("http-screenshot.nse") + 2) * -1)
 stdnse.debug(1, "Script path: %s", script_path)
 
+-- Screenshot output directory. Resolved from --script-args screenshot_dir=...
+-- and normalized on first use in action(); falls back to script_path when not
+-- provided (e.g. running the NSE by hand without mScreenshot).
+local sep = package.config:sub(1,1)
+
+local function ensure_trailing_sep(p)
+    if not p or p == "" then return p end
+    if p:sub(-1) ~= sep then return p .. sep end
+    return p
+end
+
+local function ensure_dir(p)
+    -- Create the directory if it doesn't exist. Cheap and portable.
+    if sep == "\\" then
+        os.execute('if not exist "' .. p .. '" mkdir "' .. p .. '"')
+    else
+        os.execute('mkdir -p "' .. p .. '" 2>/dev/null')
+    end
+end
+
 local function base64_encode(data)
     local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
     return ((data:gsub('.', function(x)
@@ -81,6 +101,15 @@ end
 
 action = function(host, port)
 
+    -- Resolve the output directory. Prefer the arg passed by mScreenshot
+    -- (--script-args screenshot_dir=/abs/path); fall back to the script dir.
+    local shots_dir = stdnse.get_script_args("screenshot_dir")
+    if not shots_dir or shots_dir == "" then
+        shots_dir = script_path
+    end
+    shots_dir = ensure_trailing_sep(shots_dir)
+    ensure_dir(shots_dir)
+
     -- Pass the detected service name and TLS tunnel hint so screenshot.py
     -- can pick http vs https intelligently. Both are advisory; screenshot.py
     -- will fall back to probing if they're missing.
@@ -92,17 +121,17 @@ action = function(host, port)
         tunnel = tostring(port.version.service_tunnel)
     end
 
-    local cmd = 'python3 "' .. script_path .. package.config:sub(1,1) .. 'screenshot.py"'
+    local cmd = 'python3 "' .. script_path .. sep .. 'screenshot.py"'
         .. ' -u ' .. host.ip
         .. ' -p ' .. port.number
         .. ' -s ' .. shell_quote(svc_name)
         .. ' -t ' .. shell_quote(tunnel)
-        .. ' -o "' .. script_path .. '"'
+        .. ' -o "' .. shots_dir .. '"'
 
     stdnse.debug(1, "Running: %s", cmd)
     os.execute(cmd)
 
-    local file_path = script_path .. host.ip .. '_' .. port.number .. '.png'
+    local file_path = shots_dir .. host.ip .. '_' .. port.number .. '.png'
 
     local file_content, err = read_file(file_path)
     if not file_content then

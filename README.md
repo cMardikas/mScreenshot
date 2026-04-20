@@ -95,6 +95,7 @@ mScreenshot/
 ├── mScreenshot.c              # Main C wrapper
 ├── Makefile
 ├── nmap-bootstrap.xsl         # HTML report template
+├── screenshots/               # PNG output dir (created at scan time)
 └── scripts/
     ├── http-screenshot.nse    # nmap NSE script — triggers screenshots
     └── screenshot.py          # Selenium screenshotter

@@ -7,6 +7,7 @@ mScreenshot
 # Scan output
 report_*
 *.png
+screenshots/
 
 # Python cache
 __pycache__/
