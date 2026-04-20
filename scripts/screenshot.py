@@ -20,6 +20,25 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 
 
+def short_reason(exc):
+    """Reduce a Selenium/WebDriver exception to a single-line reason.
+
+    Selenium dumps the full Chromium C++ stacktrace in str(exc); we only
+    want the human-readable bit (e.g. 'net::ERR_CONNECTION_REFUSED').
+    """
+    msg = str(exc).strip()
+    # First line only.
+    line = msg.splitlines()[0] if msg else exc.__class__.__name__
+    # Strip leading 'Message: ' that Selenium 4.x prefixes.
+    if line.startswith("Message: "):
+        line = line[len("Message: "):]
+    # Drop trailing '(Session info: ...)' parens that sometimes appear inline.
+    cut = line.find(" (Session info:")
+    if cut != -1:
+        line = line[:cut]
+    return line.strip() or exc.__class__.__name__
+
+
 EMPTY_PAGE = "<html><head></head><body></body></html>"
 HTTPS_HINT_STRINGS = (
     "use the HTTPS scheme",
@@ -54,7 +73,7 @@ def build_driver():
         service = Service("/usr/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=options)
     except Exception as e:
-        print(f"Failed to start Chrome: {e}", file=sys.stderr)
+        print(f"screenshot failed to start Chrome: {short_reason(e)}", file=sys.stderr)
         sys.exit(1)
 
     driver.set_window_size(640, 480)
@@ -69,7 +88,7 @@ def try_navigate(driver, url):
         time.sleep(2)
         return True, driver.page_source or ""
     except Exception as e:
-        print(f"  nav error on {url}: {e}", file=sys.stderr)
+        print(f"screenshot failed for {url}: {short_reason(e)}", file=sys.stderr)
         return False, ""
 
 
@@ -138,7 +157,7 @@ def capture(driver, ip, port, service, tunnel, output_dir):
         print(f"Saved: {filename} ({good_url})")
         return filename
     except Exception as e:
-        print(f"save_screenshot error: {e}", file=sys.stderr)
+        print(f"screenshot failed for {good_url}: {short_reason(e)}", file=sys.stderr)
         return None
 
 
