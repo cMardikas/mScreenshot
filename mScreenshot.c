@@ -20,7 +20,7 @@
 #include <libgen.h>
 #include <stdint.h>
 
-#define MSCREENSHOT_VERSION "v.13"
+#define MSCREENSHOT_VERSION "v.14"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
 #define SCRIPT_DIR      "scripts"
@@ -304,7 +304,6 @@ static int run_scan(const char *target) {
                script_arg,
                "--script-args", script_args,
                "-p-",
-               "-Pn",
                "-sV",
                "--version-intensity", "9",
                "-n",

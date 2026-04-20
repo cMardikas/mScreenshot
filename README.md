@@ -130,7 +130,6 @@ mScreenshot
 | Flag | Purpose |
 |---|---|
 | `-p-` | Scan all 65535 ports |
-| `-Pn` | Skip host discovery — treat every address as up (avoids firewalled hosts being dropped) |
 | `-sV` | Service version detection (needed for screenshot triggers) |
 | `--version-intensity 9` | Try every version probe so HTTP on odd ports is caught |
 | `-n` | No DNS resolution |
