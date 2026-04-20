@@ -4,9 +4,10 @@ Network scanner with automatic web service screenshots and HTML reporting. Wraps
 
 ## What it does
 
-1. Scans the target range for all open ports with service version detection
-2. Takes screenshots of every discovered HTTP/HTTPS service using headless Chromium
-3. Generates a single self-contained HTML report with sortable tables, inline screenshots, and export options (CSV, Excel, PDF)
+1. Discovery pass: fast SYN sweep across all 65535 ports on every host in the target range
+2. Enumeration pass: `-sV` version detection + NSE runs only against the host:port pairs that were actually open (much faster than single-pass `-p- -sV`)
+3. Takes screenshots of every discovered HTTP/HTTPS service using headless Chromium
+4. Generates a single self-contained HTML report with sortable tables, inline screenshots, and export options (CSV, Excel, PDF)
 
 ## Quick start
 
@@ -114,39 +115,63 @@ mScreenshot
     │
     ├── validates target input (prevents injection)
     ├── checks all dependencies
-    ├── displays CIDR range breakdown
+    ├── auto-detects local IPs (→ nmap --exclude)
+    ├── disables TSO/GSO/GRO on active interfaces (ethtool)
     │
-    ├── fork() → nmap
-    │       ├── -p-          all ports
-    │       ├── -sV          service version detection
-    │       ├── --script=    loads http-screenshot.nse
+    ├── pass 1 / discovery          ─ fork() → nmap
+    │       ├── -sS -p-              SYN sweep, all ports
+    │       ├── --min-rate 1000      no stalls on filtered ports
+    │       ├── --max-retries 1      keep it moving
+    │       └── -oG /tmp/...gnmap    small greppable output
+    │               └── parsed for host:port pairs
+    │
+    ├── pass 2 / version + screenshots ─ fork() → nmap
+    │       ├── -sV --version-intensity 7  version probes
+    │       ├── -p <open-ports-only>       targeted, not -p-
+    │       ├── -Pn                        hosts already proven up
+    │       ├── --script=scripts/          loads http-screenshot.nse
     │       │       └── calls screenshot.py per HTTP port
     │       │               └── headless Chromium → saves PNG
     │       │               └── base64 encodes into XML output
-    │       └── -oX          XML output
+    │       └── -oA report_...             XML + .nmap + .gnmap
     │
-    ├── fork() → xsltproc
-    │       └── XML + XSL → HTML report
-    │
-    └── removes intermediate XML
+    └── fork() → xsltproc
+            └── XML + XSL → HTML report
 ```
 
 ## Nmap flags
 
+mScreenshot runs nmap **twice** — a fast SYN sweep to find open ports, then a targeted `-sV` + NSE pass against just those host:port pairs. This is dramatically faster than a single-pass `-p- -sV --version-intensity 9` on anything bigger than a handful of hosts.
+
+### Pass 1 — discovery
+
 | Flag | Purpose |
 |---|---|
-| `-p-` | Scan all 65535 ports |
-| `-sV` | Service version detection (needed for screenshot triggers) |
-| `--version-intensity 9` | Try every version probe so HTTP on odd ports is caught |
-| `-n` | No DNS resolution |
-| `-vv` | Extra verbose output |
-| `-T4` | Aggressive timing — fast and safe on LAN/office networks |
-| `--open` | Show only open ports in on-screen progress (XML still contains all states) |
-| `--reason` | Include state reason codes (syn-ack, no-response) in XML |
+| `-sS` | SYN stealth scan |
+| `-p-` | All 65535 ports |
+| `-n` / `-vv` | No DNS, extra verbose |
+| `-T4` | Aggressive timing |
+| `--open` | Show only open ports on screen |
+| `--reason` | State reason codes in output |
 | `--defeat-rst-ratelimit` | Don't slow down on RST floods |
-| `--max-retries 2` | Cap retransmit budget — keeps scans moving on flaky networks |
+| `--min-rate 1000` | Don't let filtered ports stall the sweep |
+| `--max-retries 1` | Single retransmit budget — this pass is about being fast |
 | `--stats-every 10s` | Print progress every 10 seconds |
 | `--exclude <ips>` | Auto-excludes this host's own IPv4 addresses (loopback and link-local are skipped); any extras from `-e/--exclude` are appended |
+| `-oG /tmp/...gnmap` | Greppable output — small, parsed, then deleted |
+
+### Pass 2 — version detection + screenshots
+
+| Flag | Purpose |
+|---|---|
+| `-sS -sV` | SYN scan with version detection |
+| `--version-intensity 7` | Default intensity — catches HTTP on odd ports without intensity-9's overhead |
+| `-p <open-ports-only>` | Targeted at the exact union of open ports from pass 1 |
+| `-Pn` | Skip host discovery — pass 1 already proved these hosts are up |
+| `-n` / `-vv` / `-T4` / `--open` / `--reason` / `--defeat-rst-ratelimit` | Same as pass 1 |
+| `--max-retries 1` | Same aggressive retry cap |
+| `--stats-every 10s` | Progress ticks |
+| `--script=scripts/` | Loads the NSE that drives screenshot.py |
 | `-oA report_...` | Write all three output formats (.xml for HTML report, .nmap and .gnmap for inspection) |
 
 ### Pre-scan NIC tweaks

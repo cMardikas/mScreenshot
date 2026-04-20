@@ -24,7 +24,7 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 
-#define MSCREENSHOT_VERSION "v.15"
+#define MSCREENSHOT_VERSION "v.16"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
 #define SCRIPT_DIR      "scripts"
@@ -374,6 +374,123 @@ static int disable_offloads(char *out, size_t outsz) {
     return touched;
 }
 
+// Fork/exec nmap with the given argv, inherit stdio, wait for it, return 0 on
+// clean exit or 1 on any failure. argv[0] must be "nmap" and argv must end in
+// a NULL sentinel.
+static int spawn_nmap(char *const argv[]) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        return 1;
+    }
+    if (pid == 0) {
+        execvp("nmap", argv);
+        perror("exec nmap");
+        _exit(127);
+    }
+    int status;
+    waitpid(pid, &status, 0);
+    if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "\n  [!] nmap exited with code %d\n", WEXITSTATUS(status));
+        return 1;
+    }
+    if (WIFSIGNALED(status)) {
+        fprintf(stderr, "\n  [!] nmap killed by signal %d\n", WTERMSIG(status));
+        return 1;
+    }
+    return 0;
+}
+
+// Parse a greppable nmap file (-oG) and collect the union of open TCP ports
+// and the set of hosts that had at least one open port.
+//
+// Grepable format (relevant lines):
+//   Host: 10.0.0.5 () Status: Up
+//   Host: 10.0.0.5 () Ports: 22/open/tcp//ssh///, 80/open/tcp//http///\tIgnored State: closed (65533)
+//
+// We pull every "<port>/open/tcp/" token into a deduped port list, and every
+// host that contributed at least one of those tokens into a deduped host list.
+// Returns 0 on success (even if zero open ports found), non-zero on I/O error.
+static int collect_open_ports(const char *gnmap_path,
+                              char *ports_out, size_t ports_sz,
+                              char *hosts_out, size_t hosts_sz,
+                              int *port_count, int *host_count) {
+    FILE *f = fopen(gnmap_path, "r");
+    if (!f) {
+        fprintf(stderr, "  [!] cannot read %s: %s\n", gnmap_path, strerror(errno));
+        return 1;
+    }
+
+    // Dedup sets — generous ceilings for /16-sized scans.
+    static int  seen_ports[65536];
+    static char seen_hosts[4096][INET_ADDRSTRLEN];
+    int sh_count = 0;
+    memset(seen_ports, 0, sizeof(seen_ports));
+
+    ports_out[0] = '\0';
+    hosts_out[0] = '\0';
+    size_t p_pos = 0, h_pos = 0;
+    *port_count = 0;
+    *host_count = 0;
+
+    char line[16384];
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "Host: ", 6) != 0) continue;
+
+        // Skip lines that aren't Ports: lines (e.g. Status: lines).
+        char *ports_marker = strstr(line, "Ports: ");
+        if (!ports_marker) continue;
+
+        // Extract the host IP (the token right after "Host: ").
+        char host[INET_ADDRSTRLEN] = "";
+        if (sscanf(line + 6, "%45s", host) != 1 || !host[0]) continue;
+
+        // Walk each comma-separated port spec. Format: "<port>/<state>/tcp/..."
+        int host_had_open = 0;
+        char *p = ports_marker + 7;
+        while (*p) {
+            while (*p == ' ' || *p == ',') p++;
+            if (!*p || *p == '\t' || *p == '\n') break;
+
+            int port = 0;
+            char state[16] = "";
+            if (sscanf(p, "%d/%15[^/]", &port, state) == 2) {
+                if (strcmp(state, "open") == 0 && port > 0 && port < 65536) {
+                    if (!seen_ports[port]) {
+                        seen_ports[port] = 1;
+                        int n = snprintf(ports_out + p_pos, ports_sz - p_pos,
+                                         "%s%d", p_pos == 0 ? "" : ",", port);
+                        if (n > 0 && (size_t)n < ports_sz - p_pos) {
+                            p_pos += (size_t)n;
+                            (*port_count)++;
+                        }
+                    }
+                    host_had_open = 1;
+                }
+            }
+            while (*p && *p != ',' && *p != '\t' && *p != '\n') p++;
+        }
+
+        if (host_had_open) {
+            int dup = 0;
+            for (int k = 0; k < sh_count; k++) {
+                if (strcmp(seen_hosts[k], host) == 0) { dup = 1; break; }
+            }
+            if (!dup && sh_count < (int)(sizeof(seen_hosts) / sizeof(seen_hosts[0]))) {
+                snprintf(seen_hosts[sh_count++], INET_ADDRSTRLEN, "%s", host);
+                int n = snprintf(hosts_out + h_pos, hosts_sz - h_pos,
+                                 "%s%s", h_pos == 0 ? "" : " ", host);
+                if (n > 0 && (size_t)n < hosts_sz - h_pos) {
+                    h_pos += (size_t)n;
+                    (*host_count)++;
+                }
+            }
+        }
+    }
+    fclose(f);
+    return 0;
+}
+
 static int run_scan(const char *target, const char *extra_exclude) {
     char scripts_dir[4096], shots_dir[4096];
     build_path(scripts_dir, sizeof(scripts_dir), SCRIPT_DIR);
@@ -394,6 +511,11 @@ static int run_scan(const char *target, const char *extra_exclude) {
     char off_ifaces[512];
     int off_count = disable_offloads(off_ifaces, sizeof(off_ifaces));
 
+    // Temp file for the pass-1 greppable output — small, parsed, then deleted.
+    char discovery[512];
+    snprintf(discovery, sizeof(discovery),
+             "/tmp/mscreenshot_discovery_%d.gnmap", (int)getpid());
+
     printf("  scripts     : %s\n", scripts_dir);
     printf("  screenshots : %s\n", shots_dir);
     printf("  output      : %s\n", s_report_html);
@@ -401,64 +523,140 @@ static int run_scan(const char *target, const char *extra_exclude) {
         printf("  exclude     : %s\n", exclude);
     if (off_count > 0)
         printf("  offloads    : tso/gso/gro off on %s\n", off_ifaces);
+    printf("  strategy    : two-pass (discovery -> version+screenshots)\n");
     printf("\n");
-    printf("  ─── nmap output ────────────────────────────────────────\n\n");
 
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("fork");
-        return 1;
-    }
+    // --------------------------------------------------------------------
+    // Pass 1 — discovery. SYN sweep across all 65535 ports with --min-rate
+    // so filtered ports don't stall us; no NSE, no -sV. Greppable output
+    // is parsed to find which host:port combos are actually open.
+    // --------------------------------------------------------------------
+    printf("  --- pass 1 / discovery ---\n\n");
+    fflush(stdout);
 
-    if (pid == 0) {
-        char script_arg[4096];
-        char script_args[4200];
-        snprintf(script_arg,  sizeof(script_arg),  "--script=%s/", scripts_dir);
-        snprintf(script_args, sizeof(script_args), "screenshot_dir=%s", shots_dir);
-
-        // Build argv dynamically so --exclude is only included when non-empty.
+    {
         char *argv[32];
         int i = 0;
         argv[i++] = "nmap";
-        argv[i++] = script_arg;
-        argv[i++] = "--script-args"; argv[i++] = script_args;
+        argv[i++] = "-sS";
         argv[i++] = "-p-";
-        argv[i++] = "-sV";
-        argv[i++] = "--version-intensity"; argv[i++] = "9";
         argv[i++] = "-n";
         argv[i++] = "-vv";
         argv[i++] = "-T4";
         argv[i++] = "--open";
         argv[i++] = "--reason";
         argv[i++] = "--defeat-rst-ratelimit";
-        argv[i++] = "--max-retries"; argv[i++] = "2";
+        argv[i++] = "--min-rate";    argv[i++] = "1000";
+        argv[i++] = "--max-retries"; argv[i++] = "1";
         argv[i++] = "--stats-every"; argv[i++] = "10s";
         if (exclude[0]) {
             argv[i++] = "--exclude";
             argv[i++] = exclude;
         }
-        argv[i++] = "-oA"; argv[i++] = s_report_base;
+        argv[i++] = "-oG"; argv[i++] = discovery;
         argv[i++] = (char *)target;
         argv[i]   = NULL;
 
-        execvp("nmap", argv);
-        perror("exec nmap");
-        _exit(127);
+        if (spawn_nmap(argv) != 0) {
+            unlink(discovery);
+            return 1;
+        }
     }
 
-    int status;
-    waitpid(pid, &status, 0);
-
-    if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-        fprintf(stderr, "\n  [!] nmap exited with code %d\n", WEXITSTATUS(status));
+    // Parse the greppable output.
+    static char ports_list[262144];   // plenty for tens of thousands of ports
+    static char hosts_list[131072];   // plenty for a /16 of live hosts
+    int n_ports = 0, n_hosts = 0;
+    if (collect_open_ports(discovery, ports_list, sizeof(ports_list),
+                           hosts_list, sizeof(hosts_list),
+                           &n_ports, &n_hosts) != 0) {
+        unlink(discovery);
         return 1;
     }
-    if (WIFSIGNALED(status)) {
-        fprintf(stderr, "\n  [!] nmap killed by signal %d\n", WTERMSIG(status));
-        return 1;
+    unlink(discovery);
+
+    printf("\n  discovery: %d open port(s) across %d host(s)\n\n",
+           n_ports, n_hosts);
+
+    if (n_ports == 0 || n_hosts == 0) {
+        // No open ports — create a minimal XML so the HTML report still
+        // generates with an empty-but-valid structure. Easiest way: run a
+        // trivial nmap that produces a proper nmaprun document.
+        printf("  no open ports found - writing empty report\n\n");
+        char *argv[16];
+        int i = 0;
+        argv[i++] = "nmap";
+        argv[i++] = "-sn";
+        argv[i++] = "-n";
+        argv[i++] = "-Pn";
+        argv[i++] = "--max-retries"; argv[i++] = "0";
+        argv[i++] = "-oA"; argv[i++] = s_report_base;
+        argv[i++] = (char *)target;
+        argv[i]   = NULL;
+        (void)spawn_nmap(argv);   // best-effort; still return 0 to build HTML
+        printf("\n  --- scan complete ---\n\n");
+        return 0;
     }
 
-    printf("\n  ─── scan complete ──────────────────────────────────────\n\n");
+    // --------------------------------------------------------------------
+    // Pass 2 — version detection + NSE (screenshots), targeted only at the
+    // hosts & ports discovered in pass 1. -Pn because host liveness is
+    // already proven by pass 1's open-port findings.
+    // --------------------------------------------------------------------
+    printf("  --- pass 2 / version + screenshots ---\n\n");
+    fflush(stdout);
+
+    {
+        char script_arg[4096];
+        char script_args[4200];
+        snprintf(script_arg,  sizeof(script_arg),  "--script=%s/", scripts_dir);
+        snprintf(script_args, sizeof(script_args), "screenshot_dir=%s", shots_dir);
+
+        // Tokenise hosts_list (space-separated) into argv entries. It's
+        // already in our static buffer so pointers stay valid across the
+        // exec. Cap the count to leave headroom for other args and NULL.
+        char *host_argv[2048];
+        int h = 0;
+        for (char *tok = strtok(hosts_list, " ");
+             tok && h < (int)(sizeof(host_argv) / sizeof(host_argv[0])) - 1;
+             tok = strtok(NULL, " ")) {
+            host_argv[h++] = tok;
+        }
+
+        // Build final argv: fixed head + hosts tail.
+        int total = 32 + h + 1;
+        char **argv = (char **)calloc((size_t)total, sizeof(char *));
+        if (!argv) {
+            fprintf(stderr, "  [!] out of memory\n");
+            return 1;
+        }
+        int i = 0;
+        argv[i++] = "nmap";
+        argv[i++] = script_arg;
+        argv[i++] = "--script-args"; argv[i++] = script_args;
+        argv[i++] = "-sS";
+        argv[i++] = "-sV";
+        argv[i++] = "--version-intensity"; argv[i++] = "7";
+        argv[i++] = "-n";
+        argv[i++] = "-vv";
+        argv[i++] = "-T4";
+        argv[i++] = "-Pn";                        // already confirmed alive
+        argv[i++] = "--open";
+        argv[i++] = "--reason";
+        argv[i++] = "--defeat-rst-ratelimit";
+        argv[i++] = "--max-retries"; argv[i++] = "1";
+        argv[i++] = "--stats-every"; argv[i++] = "10s";
+        argv[i++] = "-p"; argv[i++] = ports_list;
+        argv[i++] = "-oA"; argv[i++] = s_report_base;
+        for (int j = 0; j < h; j++) argv[i++] = host_argv[j];
+        argv[i] = NULL;
+
+        int rc = spawn_nmap(argv);
+        free(argv);
+        if (rc != 0) return 1;
+    }
+
+    printf("\n  --- scan complete ---\n\n");
     return 0;
 }
 
