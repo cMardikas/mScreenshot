@@ -20,7 +20,7 @@
 #include <libgen.h>
 #include <stdint.h>
 
-#define MSCREENSHOT_VERSION "v.11"
+#define MSCREENSHOT_VERSION "v.12"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
 #define SCRIPT_DIR      "scripts"
@@ -368,8 +368,9 @@ static int generate_report(void) {
     waitpid(pid, &status, 0);
 
     if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
-        // Remove the intermediate XML
-        remove(s_report_xml);
+        // Keep the XML alongside the HTML so --report can regenerate
+        // and ad-hoc inspection (grep, xmllint) stays possible.
+        printf("  xml       : %s\n", s_report_xml);
         printf("  report    : %s\n", s_report_html);
         return 0;
     }
