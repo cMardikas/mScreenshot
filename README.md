@@ -131,6 +131,7 @@ mScreenshot
 |---|---|
 | `-p-` | Scan all 65535 ports |
 | `-sV` | Service version detection (needed for screenshot triggers) |
+| `--version-intensity 9` | Try every version probe so HTTP on odd ports is caught |
 | `-n` | No DNS resolution |
 | `-v` | Verbose output |
 | `--defeat-rst-ratelimit` | Don't slow down on RST floods |

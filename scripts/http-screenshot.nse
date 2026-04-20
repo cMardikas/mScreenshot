@@ -16,9 +16,11 @@
 -- 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 description = [[
-Gets a screenshot from the host. Attempts every open TCP port that is not
-a known non-web service, so web UIs on non-standard ports (e.g. 5357, 631,
-5000, 8000, 8080, 8443, 9000, 9090...) are captured too.
+Gets a screenshot from the host. Runs on any open TCP port that nmap's
+service detection identifies as HTTP-based (http, https, http-proxy,
+http-alt, wsdapi, ipp, soap, webdav, caldav) or that is SSL-tunneled.
+Trusts -sV, so it works on non-standard ports (8080, 9090, 44444, ...)
+as long as -sV ran successfully.
 ]]
 
 author = "Ryan Wincey"
@@ -76,22 +78,30 @@ local function read_file(file_path)
     return content
 end
 
--- Known non-web services. Every other open TCP port is a screenshot candidate.
-local skip_ports = {
-    [21]=true, [22]=true, [23]=true, [25]=true, [53]=true,
-    [110]=true, [111]=true, [135]=true, [137]=true, [138]=true, [139]=true,
-    [143]=true, [161]=true, [389]=true, [445]=true, [465]=true,
-    [587]=true, [636]=true, [993]=true, [995]=true,
-    [1433]=true, [1521]=true, [3306]=true, [3389]=true,
-    [5432]=true, [5900]=true, [5901]=true, [5902]=true,
-    [6379]=true, [27017]=true,
+-- Services nmap labels with a distinct name but which actually speak HTTP.
+-- These don't start with "http" so they need an explicit allow entry.
+local http_like_services = {
+    wsdapi = true,
+    ipp    = true,
+    soap   = true,
+    webdav = true,
+    caldav = true,
 }
+
+local function looks_http(port)
+    local name = (port.service or ""):lower()
+    if name:find("http") then return true end
+    if http_like_services[name] then return true end
+    if port.version and port.version.service_tunnel == "ssl" then
+        return true
+    end
+    return false
+end
 
 portrule = function(host, port)
     if port.protocol ~= "tcp" then return false end
     if port.state ~= "open" then return false end
-    if skip_ports[port.number] then return false end
-    return true
+    return looks_http(port)
 end
 
 local function shell_quote(s)
