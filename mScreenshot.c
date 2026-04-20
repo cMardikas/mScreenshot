@@ -19,8 +19,12 @@
 #include <errno.h>
 #include <libgen.h>
 #include <stdint.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <net/if.h>
 
-#define MSCREENSHOT_VERSION "v.14"
+#define MSCREENSHOT_VERSION "v.15"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
 #define SCRIPT_DIR      "scripts"
@@ -271,7 +275,106 @@ static void clean_reports(void) {
 
 // ─── Run scan ────────────────────────────────────────────────────────────────
 
-static int run_scan(const char *target) {
+// Enumerate all non-loopback, non-link-local IPv4 addresses on this host and
+// join them with commas into `out`. Optionally appends a user-supplied extra
+// list. Returns the approximate count of excluded entries.
+static int detect_local_ips(char *out, size_t outsz, const char *extra) {
+    struct ifaddrs *ifa = NULL;
+    out[0] = '\0';
+    if (getifaddrs(&ifa) != 0) return 0;
+
+    size_t pos = 0;
+    int count = 0;
+
+    for (struct ifaddrs *p = ifa; p; p = p->ifa_next) {
+        if (!p->ifa_addr) continue;
+        if (p->ifa_addr->sa_family != AF_INET) continue;
+
+        struct sockaddr_in *in = (struct sockaddr_in *)p->ifa_addr;
+        char ip[INET_ADDRSTRLEN];
+        if (!inet_ntop(AF_INET, &in->sin_addr, ip, sizeof(ip))) continue;
+
+        if (strncmp(ip, "127.", 4) == 0) continue;       // loopback
+        if (strncmp(ip, "169.254.", 8) == 0) continue;   // link-local
+
+        int n = snprintf(out + pos, outsz - pos, "%s%s",
+                         pos == 0 ? "" : ",", ip);
+        if (n < 0 || (size_t)n >= outsz - pos) break;
+        pos += (size_t)n;
+        count++;
+    }
+    freeifaddrs(ifa);
+
+    if (extra && extra[0]) {
+        int n = snprintf(out + pos, outsz - pos, "%s%s",
+                         pos == 0 ? "" : ",", extra);
+        if (n > 0 && (size_t)n < outsz - pos) {
+            count++;
+            for (const char *c = extra; *c; c++)
+                if (*c == ',') count++;
+        }
+    }
+
+    return count;
+}
+
+// Best-effort: disable segmentation/receive offloads on every active
+// non-loopback interface before the scan. TSO/GSO let the kernel hand huge
+// buffers to the NIC (or software layer) to split into on-the-wire segments,
+// and GRO merges inbound packets before they reach userspace — great for
+// throughput, but they can mangle nmap's hand-crafted SYN packets and its
+// view of replies, causing false negatives. Silently skipped if ethtool is
+// missing or the call fails (e.g. virtual interfaces that don't support it).
+static int disable_offloads(char *out, size_t outsz) {
+    out[0] = '\0';
+    if (!check_command("ethtool")) return 0;
+
+    struct ifaddrs *ifa = NULL;
+    if (getifaddrs(&ifa) != 0) return 0;
+
+    // Collect unique interface names (getifaddrs lists one entry per address).
+    char seen[16][IFNAMSIZ];
+    int seen_count = 0;
+    size_t pos = 0;
+    int touched = 0;
+
+    for (struct ifaddrs *p = ifa; p; p = p->ifa_next) {
+        if (!p->ifa_name) continue;
+        if (!p->ifa_addr) continue;
+        if (p->ifa_addr->sa_family != AF_INET) continue;
+        if (!(p->ifa_flags & IFF_UP)) continue;
+        if (p->ifa_flags & IFF_LOOPBACK) continue;
+
+        bool dup = false;
+        for (int j = 0; j < seen_count; j++) {
+            if (strcmp(seen[j], p->ifa_name) == 0) { dup = true; break; }
+        }
+        if (dup) continue;
+        if (seen_count >= (int)(sizeof(seen) / sizeof(seen[0]))) break;
+        snprintf(seen[seen_count++], IFNAMSIZ, "%s", p->ifa_name);
+
+        // One call sets all three in a single kernel round-trip. ethtool
+        // returns non-zero if ANY requested feature is unsupported on the
+        // interface, so we still count this as a success when the command
+        // completes normally — individual features are silently ignored.
+        char cmd[256];
+        snprintf(cmd, sizeof(cmd),
+                 "ethtool -K %s tso off gso off gro off >/dev/null 2>&1",
+                 p->ifa_name);
+        if (system(cmd) == 0) {
+            int n = snprintf(out + pos, outsz - pos, "%s%s",
+                             pos == 0 ? "" : ",", p->ifa_name);
+            if (n > 0 && (size_t)n < outsz - pos) {
+                pos += (size_t)n;
+                touched++;
+            }
+        }
+    }
+    freeifaddrs(ifa);
+    return touched;
+}
+
+static int run_scan(const char *target, const char *extra_exclude) {
     char scripts_dir[4096], shots_dir[4096];
     build_path(scripts_dir, sizeof(scripts_dir), SCRIPT_DIR);
     build_path(shots_dir,   sizeof(shots_dir),   SCREENSHOT_DIR);
@@ -282,9 +385,22 @@ static int run_scan(const char *target) {
         return 1;
     }
 
+    // Build the exclude list (auto-detected local IPs plus user extras).
+    char exclude[1024];
+    int exc_count = detect_local_ips(exclude, sizeof(exclude), extra_exclude);
+
+    // Turn off TSO/GSO/GRO on all non-loopback interfaces so nmap's crafted
+    // SYN packets aren't merged/split by the NIC or kernel offload layer.
+    char off_ifaces[512];
+    int off_count = disable_offloads(off_ifaces, sizeof(off_ifaces));
+
     printf("  scripts     : %s\n", scripts_dir);
     printf("  screenshots : %s\n", shots_dir);
     printf("  output      : %s\n", s_report_html);
+    if (exc_count > 0)
+        printf("  exclude     : %s\n", exclude);
+    if (off_count > 0)
+        printf("  offloads    : tso/gso/gro off on %s\n", off_ifaces);
     printf("\n");
     printf("  ─── nmap output ────────────────────────────────────────\n\n");
 
@@ -300,24 +416,32 @@ static int run_scan(const char *target) {
         snprintf(script_arg,  sizeof(script_arg),  "--script=%s/", scripts_dir);
         snprintf(script_args, sizeof(script_args), "screenshot_dir=%s", shots_dir);
 
-        execlp("nmap", "nmap",
-               script_arg,
-               "--script-args", script_args,
-               "-p-",
-               "-sV",
-               "--version-intensity", "9",
-               "-n",
-               "-vv",
-               "-T4",
-               "--open",
-               "--reason",
-               "--defeat-rst-ratelimit",
-               "--max-retries", "2",
-               "--stats-every", "10s",
-               "-oA", s_report_base,
-               target,
-               (char *)NULL);
+        // Build argv dynamically so --exclude is only included when non-empty.
+        char *argv[32];
+        int i = 0;
+        argv[i++] = "nmap";
+        argv[i++] = script_arg;
+        argv[i++] = "--script-args"; argv[i++] = script_args;
+        argv[i++] = "-p-";
+        argv[i++] = "-sV";
+        argv[i++] = "--version-intensity"; argv[i++] = "9";
+        argv[i++] = "-n";
+        argv[i++] = "-vv";
+        argv[i++] = "-T4";
+        argv[i++] = "--open";
+        argv[i++] = "--reason";
+        argv[i++] = "--defeat-rst-ratelimit";
+        argv[i++] = "--max-retries"; argv[i++] = "2";
+        argv[i++] = "--stats-every"; argv[i++] = "10s";
+        if (exclude[0]) {
+            argv[i++] = "--exclude";
+            argv[i++] = exclude;
+        }
+        argv[i++] = "-oA"; argv[i++] = s_report_base;
+        argv[i++] = (char *)target;
+        argv[i]   = NULL;
 
+        execvp("nmap", argv);
         perror("exec nmap");
         _exit(127);
     }
@@ -406,13 +530,16 @@ static void print_usage(const char *prog) {
     printf("                  examples: 10.90.0.0/16  192.168.1.0/24  10.0.0.1-50\n\n");
     printf("Options:\n");
     printf("  -d, --desc      Scan description (e.g., \"Office network\")\n");
+    printf("  -e, --exclude   Extra IPs/CIDRs to exclude from scan (comma-separated)\n");
+    printf("                  (local host IPs are auto-detected and always excluded)\n");
     printf("  -c, --clean     Remove all report_* files and screenshots, then exit\n");
     printf("  -r, --report    Generate HTML report from existing XML (skip scan)\n");
     printf("  -h, --help      Show this help\n\n");
     printf("Examples:\n");
     printf("  sudo ./mScreenshot -d \"Office network\" 10.90.0.0/16\n");
     printf("  sudo ./mScreenshot 192.168.1.0/24\n");
-    printf("  sudo ./mScreenshot -d \"DMZ\" 10.0.0.1\n\n");
+    printf("  sudo ./mScreenshot -d \"DMZ\" 10.0.0.1\n");
+    printf("  sudo ./mScreenshot -e 10.0.0.5,10.0.0.6 10.0.0.0/24\n\n");
     printf("Output:\n");
     printf("  report_<desc>_<date>_<time>.html    HTML report with screenshots\n");
 }
@@ -426,6 +553,7 @@ int main(int argc, char **argv) {
     bool do_report_only = false;
     const char *target = NULL;
     const char *description = NULL;
+    const char *extra_exclude = NULL;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
@@ -442,6 +570,10 @@ int main(int argc, char **argv) {
         }
         if ((strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--desc") == 0) && i + 1 < argc) {
             description = argv[++i];
+            continue;
+        }
+        if ((strcmp(argv[i], "-e") == 0 || strcmp(argv[i], "--exclude") == 0) && i + 1 < argc) {
+            extra_exclude = argv[++i];
             continue;
         }
         if (argv[i][0] == '-') {
@@ -540,7 +672,7 @@ int main(int argc, char **argv) {
     printf("  all dependencies OK\n\n");
 
     // Run the scan
-    int rc = run_scan(target);
+    int rc = run_scan(target, extra_exclude);
     if (rc != 0) return rc;
 
     // Generate HTML report

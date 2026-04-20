@@ -18,7 +18,7 @@ sudo ./mScreenshot -d "Office network" 10.1.0.0/16
 ## Requirements
 
 ```bash
-sudo apt install nmap xsltproc chromium chromium-driver python3-selenium
+sudo apt install nmap xsltproc chromium chromium-driver python3-selenium ethtool
 ```
 
 | Dependency | Purpose |
@@ -28,6 +28,7 @@ sudo apt install nmap xsltproc chromium chromium-driver python3-selenium
 | chromium | Headless browser for screenshots |
 | chromium-driver | WebDriver for Selenium |
 | python3-selenium | Python browser automation |
+| ethtool (optional) | Used to disable TSO/GSO/GRO on active interfaces before scan |
 
 ## Usage
 
@@ -39,6 +40,8 @@ Usage: mScreenshot [options] <target>
 
 Options:
   -d, --desc      Scan description (e.g., "Office network")
+  -e, --exclude   Extra IPs/CIDRs to exclude (comma-separated)
+                  (local host IPs are auto-detected and always excluded)
   -c, --clean     Remove all reports and screenshots, then exit
   -r, --report    Regenerate HTML from most recent XML (skip scan)
   -h, --help      Show this help
@@ -61,6 +64,9 @@ sudo ./mScreenshot -d "DMZ servers" 10.0.0.1-50
 
 # Regenerate HTML report from existing XML
 ./mScreenshot --report
+
+# Exclude extra hosts from the scan (in addition to this host's own IPs)
+sudo ./mScreenshot -e 10.0.0.5,10.0.0.6 10.0.0.0/24
 ```
 
 ## Output
@@ -140,7 +146,12 @@ mScreenshot
 | `--defeat-rst-ratelimit` | Don't slow down on RST floods |
 | `--max-retries 2` | Cap retransmit budget — keeps scans moving on flaky networks |
 | `--stats-every 10s` | Print progress every 10 seconds |
+| `--exclude <ips>` | Auto-excludes this host's own IPv4 addresses (loopback and link-local are skipped); any extras from `-e/--exclude` are appended |
 | `-oA report_...` | Write all three output formats (.xml for HTML report, .nmap and .gnmap for inspection) |
+
+### Pre-scan NIC tweaks
+
+Before the scan runs, `ethtool -K <iface> tso off gso off gro off` is issued on every active non-loopback interface (best-effort, silently skipped if `ethtool` is missing). These offloads (TCP Segmentation Offload, Generic Segmentation Offload, Generic Receive Offload) let the NIC or kernel split and merge packets for throughput — great for normal traffic, but they can mangle nmap's hand-crafted SYN packets and its view of replies, causing false negatives.
 
 ## Building
 
