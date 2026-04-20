@@ -20,7 +20,7 @@
 #include <libgen.h>
 #include <stdint.h>
 
-#define MSCREENSHOT_VERSION "1.0.0"
+#define MSCREENSHOT_VERSION "v.10"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
 #define SCRIPT_DIR      "scripts"
