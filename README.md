@@ -191,6 +191,34 @@ Before the scan runs, `ethtool -K <iface> tso off gso off gro off` is issued on 
 make
 ```
 
+## Local testing
+
+`tests/test_servers.py` spins up three local web services on different ports to exercise the screenshot logic without scanning anything external:
+
+| Port | Behavior |
+|---|---|
+| 8088 | Plain HTTP, Tomcat-style landing page |
+| 8843 | TLS that also accepts plain HTTP and replies with Tomcat's "This combination of host and port requires TLS" 400 — the misdetection edge case |
+| 8443 | Pure HTTPS only |
+
+Usage:
+
+```bash
+# Terminal 1 — start the test servers (generates a self-signed cert on first run)
+python3 tests/test_servers.py
+
+# Terminal 2 — scan loopback
+sudo ./mScreenshot 127.0.0.1
+```
+
+Quick sanity check from any terminal:
+
+```bash
+curl http://127.0.0.1:8088/      # Tomcat landing
+curl http://127.0.0.1:8843/      # 'requires TLS' error
+curl -k https://127.0.0.1:8843/  # real secure landing
+```
+
 ## License
 
 MIT

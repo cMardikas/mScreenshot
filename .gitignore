@@ -12,3 +12,7 @@ screenshots/
 # Python cache
 __pycache__/
 *.pyc
+
+# Test fixture artifacts
+tests/cert.pem
+tests/key.pem

@@ -24,7 +24,7 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 
-#define MSCREENSHOT_VERSION "v.19"
+#define MSCREENSHOT_VERSION "v.20"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
 #define SCRIPT_DIR      "scripts"
