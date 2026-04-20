@@ -94,11 +94,11 @@ report_192.168.1.0-24_2026-03-26_2044.html
 mScreenshot/
 ├── mScreenshot.c              # Main C wrapper
 ├── Makefile
-├── nmap-bootstrap.xsl         # HTML report template
 ├── screenshots/               # PNG output dir (created at scan time)
 └── scripts/
     ├── http-screenshot.nse    # nmap NSE script — triggers screenshots
-    └── screenshot.py          # Selenium screenshotter
+    ├── screenshot.py          # Selenium screenshotter
+    └── nmap-bootstrap.xsl     # HTML report template
 ```
 
 ## How it works

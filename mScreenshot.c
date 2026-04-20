@@ -23,9 +23,9 @@
 #define MSCREENSHOT_VERSION "1.0.0"
 #define MSCREENSHOT_BUILD   __DATE__ " " __TIME__
 
-#define XSL_FILE        "nmap-bootstrap.xsl"
 #define SCRIPT_DIR      "scripts"
 #define SCREENSHOT_DIR  "screenshots"
+#define XSL_FILE        SCRIPT_DIR "/nmap-bootstrap.xsl"
 
 // ─── Report name builder ─────────────────────────────────────────────────────
 
